@@ -1,0 +1,567 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model with authentication and profile fields
+model User {
+  id              String    @id @default(cuid())
+  name            String?
+  email           String    @unique
+  emailVerified   DateTime?
+  password        String?   // Optional for OAuth users
+  image           String?
+  role            Role      @default(USER)
+  adminVerified   Boolean   @default(false) // Manually verified by admin
+  isPaid          Boolean   @default(false) // Subscription status
+  paidUntil       DateTime? // Subscription expiry date
+  twoFactorSecret String?   // TOTP secret for 2FA
+  twoFactorEnabled Boolean  @default(false) // 2FA status
+  backupCodes     String[]  // Hashed backup codes for 2FA recovery
+  twoFactorVerified DateTime? // When 2FA was first verified
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  auditLogs         AuditLog[]        @relation("AuditLogAdmin")
+  sessionLogs       SessionLog[]
+  rateLimitAttempts RateLimitLog[]
+  systemSettings    SystemSettings[]
+  settingsHistory   SettingsHistory[]
+  activityLogs      UserActivityLog[]
+  subscriptionChanges SubscriptionChangeLog[]
+  pendingEmailChanges PendingEmailChange[]
+
+  @@index([role])
+  @@index([isPaid])
+  @@index([createdAt])
+  @@index([emailVerified])
+  @@index([role, isPaid])
+  @@map("users")
+}
+
+// Auth.js Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+// Auth.js Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Session metadata for active sessions management
+  userAgent    String?  @db.Text
+  ipAddress    String?
+  country      String?
+  city         String?
+  createdAt    DateTime @default(now())
+  lastActive   DateTime @default(now())
+
+  // 2FA verification status - tracks if 2FA was completed for this session
+  // For users with 2FA enabled, this must be true to access protected resources
+  twoFactorVerified Boolean @default(false)
+  // Timestamp of last 2FA verification for sensitive actions (grace period tracking)
+  twoFactorVerifiedAt DateTime?
+
+  @@index([userId])
+  @@index([expires])
+  @@index([lastActive])
+  @@map("sessions")
+}
+
+// Auth.js Verification Token model
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@index([expires])
+  @@map("verification_tokens")
+}
+
+// Pending Email Change - secure email change with revert capability
+model PendingEmailChange {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  oldEmail     String   // Original email (can still login with this)
+  newEmail     String   // New email (pending verification)
+
+  token        String   @unique // For verification link
+  cancelToken  String   @unique // For cancel/revert link
+
+  finalized    Boolean  @default(false) // Has change been completed?
+  cancelled    Boolean  @default(false) // Was change cancelled?
+
+  expiresAt    DateTime // 24-48 hours from creation
+  createdAt    DateTime @default(now())
+  finalizedAt  DateTime?
+  cancelledAt  DateTime?
+
+  @@index([userId])
+  @@index([token])
+  @@index([cancelToken])
+  @@index([expiresAt])
+  @@index([finalized, cancelled])
+  @@map("pending_email_changes")
+}
+
+// Admin Audit Log - tracks all admin actions
+model AuditLog {
+  id        String      @id @default(cuid())
+  adminId   String
+  admin     User        @relation("AuditLogAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  action    String      // e.g., "CREATE_USER", "DELETE_USER", "UPDATE_SUBSCRIPTION"
+  severity  AuditSeverity @default(INFO) // CRITICAL, WARNING, INFO
+  resource  String?     // e.g., "User", "Subscription"
+  resourceId String?    // ID of the affected resource
+  details   Json?       // Additional details about the action
+  ipAddress String?
+  userAgent String?
+  country   String?     // IP geolocation country
+  city      String?     // IP geolocation city
+  timestamp DateTime    @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([timestamp])
+  @@index([severity])
+  @@index([timestamp, action])
+  @@index([timestamp, severity])
+  @@map("audit_logs")
+}
+
+// Session Activity Log - tracks user login/logout events
+model SessionLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event      String   // "LOGIN", "LOGOUT", "SESSION_REFRESH", "PASSWORD_RESET"
+  method     String?  // "credentials", "google", etc.
+  ipAddress  String?
+  userAgent  String?
+  country    String?  // IP geolocation country
+  city       String?  // IP geolocation city
+  success    Boolean  @default(true)
+  failReason String?  // Reason for failure if success=false
+  timestamp  DateTime @default(now())
+
+  @@index([userId])
+  @@index([event])
+  @@index([timestamp])
+  @@index([success])
+  @@index([timestamp, success])
+  @@map("session_logs")
+}
+
+// Rate Limiting Log - tracks API rate limit attempts
+model RateLimitLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identifier String   // IP address or user ID
+  endpoint   String   // API endpoint being accessed
+  attempts   Int      @default(1)
+  blocked    Boolean  @default(false)
+  windowStart DateTime @default(now())
+  windowEnd   DateTime
+  timestamp   DateTime @default(now())
+
+  @@index([identifier, endpoint])
+  @@index([windowEnd])
+  @@map("rate_limit_logs")
+}
+
+// Application Log - general application events and errors
+model AppLog {
+  id        String   @id @default(cuid())
+  level     LogLevel // INFO, WARN, ERROR, DEBUG
+  message   String   @db.Text
+  category  String   // "auth", "api", "database", "email", etc.
+  metadata  Json?    // Additional context
+  stack     String?  @db.Text // Error stack trace
+  timestamp DateTime @default(now())
+
+  @@index([level])
+  @@index([category])
+  @@index([timestamp])
+  @@map("app_logs")
+}
+
+// Cron Job Configuration
+model CronJob {
+  id          String      @id @default(cuid())
+  name        String      @unique // e.g., "log_cleanup", "send_reports"
+  description String?
+  schedule    String      // Cron expression: "0 0 * * *"
+  enabled     Boolean     @default(true)
+  template    String?     // Template name if using template-based job
+  parameters  Json?       // Template parameters (e.g., {tableName: "AuditLog", daysToKeep: 30})
+  lastRun     DateTime?
+  nextRun     DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  executions  CronExecution[]
+
+  @@map("cron_jobs")
+}
+
+// Cron Job Execution History
+model CronExecution {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       CronJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status    CronStatus // SUCCESS, FAILURE, RUNNING
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+  duration  Int?     // Duration in milliseconds
+  output    String?  @db.Text
+  error     String?  @db.Text
+  recordsAffected Int? // Number of records processed/deleted
+
+  @@index([jobId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("cron_executions")
+}
+
+// Alert Configuration
+model Alert {
+  id          String      @id @default(cuid())
+  name        String      // e.g., "Failed Logins", "Admin Role Changes"
+  description String?
+  type        AlertType   // SECURITY, ERROR, INFO
+  condition   Json        // Alert trigger conditions
+  enabled     Boolean     @default(true)
+  channels    AlertChannel[] // Where to send alerts
+  cooldown    Int         @default(300) // Seconds before resending same alert
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  triggers    AlertTrigger[]
+
+  @@map("alerts")
+}
+
+// Alert Trigger History
+model AlertTrigger {
+  id        String   @id @default(cuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  triggered DateTime @default(now())
+  resolved  DateTime?
+  message   String   @db.Text
+  metadata  Json?
+  sent      Boolean  @default(false)
+  channels  String[] // telegram, email, etc.
+
+  @@index([alertId])
+  @@index([triggered])
+  @@index([sent])
+  @@map("alert_triggers")
+}
+
+// Alert Channels (Telegram, Email, etc.)
+model AlertChannel {
+  id        String    @id @default(cuid())
+  alertId   String
+  alert     Alert     @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  type      ChannelType // TELEGRAM, EMAIL, WEBHOOK
+  config    Json      // { chatId: "123", token: "..." } or { email: "..." }
+  enabled   Boolean   @default(true)
+
+  @@index([alertId])
+  @@map("alert_channels")
+}
+
+// System Settings
+model SystemSettings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+  description String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  updater   User?  @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}
+
+// Settings Change History
+model SettingsHistory {
+  id        String   @id @default(cuid())
+  key       String
+  oldValue  Json
+  newValue  Json
+  changedBy String
+  user      User     @relation(fields: [changedBy], references: [id], onDelete: Cascade)
+  changedAt DateTime @default(now())
+
+  @@index([key, changedAt])
+  @@map("settings_history")
+}
+
+// ============================================================================
+// ANALYTICS SYSTEM (Optional, Performance-Optimized)
+// ============================================================================
+
+// Analytics Settings - Control what to track
+model AnalyticsSettings {
+  id                      String   @id @default("analytics_config") // Singleton
+
+  // Feature toggles
+  trackPageViews          Boolean  @default(true)
+  trackUserActivity       Boolean  @default(true)
+  trackDeviceInfo         Boolean  @default(true)
+  trackGeolocation        Boolean  @default(true)
+  trackSubscriptionEvents Boolean  @default(true)
+  trackPerformance        Boolean  @default(false) // More expensive
+
+  // Performance settings
+  samplingRate            Int      @default(100) // 100 = track all, 10 = track 10%
+  batchSize               Int      @default(100) // Batch inserts for performance
+  asyncTracking           Boolean  @default(true) // Non-blocking tracking
+
+  // Data retention (days)
+  retainRawData           Int      @default(90) // Keep raw data for 90 days
+  retainAggregatedData    Int      @default(365) // Keep summaries for 1 year
+
+  // Metabase dashboard links (JSON array)
+  metabaseDashboards      Json?    @default("[]") // [{ title: "...", description: "...", url: "..." }]
+
+  updatedAt               DateTime @updatedAt
+  updatedBy               String?
+
+  @@map("analytics_settings")
+}
+
+// User Activity Log - Detailed user actions (raw data, auto-cleaned)
+model UserActivityLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // What happened
+  activity     String   // "PAGE_VIEW", "FEATURE_USE", "BUTTON_CLICK", etc.
+  resource     String?  // Page path, feature name, button ID
+  action       String?  // "VIEW", "CLICK", "SUBMIT", "DOWNLOAD"
+
+  // Context
+  metadata     Json?    // Additional context (flexible)
+
+  // Device & Browser (optional, toggle in settings)
+  userAgent    String?  @db.Text
+  deviceType   String?  // "mobile", "desktop", "tablet"
+  browser      String?  // "Chrome", "Firefox", "Safari"
+  browserVersion String?
+  os           String?  // "Windows", "macOS", "iOS", "Android"
+  osVersion    String?
+
+  // Location (optional, toggle in settings)
+  ipAddress    String?
+  country      String?
+  city         String?
+
+  // Timing
+  duration     Int?     // For timed events (milliseconds)
+  timestamp    DateTime @default(now())
+
+  // Performance optimization
+  @@index([userId, timestamp])
+  @@index([activity, timestamp])
+  @@index([timestamp]) // For cleanup cron
+  @@index([deviceType])
+  @@index([country])
+  @@map("user_activity_logs")
+}
+
+// Subscription Change Log - Payment/subscription events
+model SubscriptionChangeLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // What changed
+  changeType    String   // "UPGRADE", "DOWNGRADE", "CANCEL", "RENEW", "TRIAL_START", "TRIAL_END", "PAYMENT_FAILED"
+  fromStatus    String?  // Previous status
+  toStatus      String   // New status
+  fromPlan      String?  // Previous plan name
+  toPlan        String?  // New plan name
+
+  // Payment info
+  amount        Decimal? @db.Decimal(10, 2)
+  currency      String?  @default("USD")
+  paymentMethod String?  // "card", "paypal", etc.
+  transactionId String?  // External payment ID
+
+  // Context
+  reason        String?  @db.Text // Reason for change
+  metadata      Json?    // Additional context
+
+  timestamp     DateTime @default(now())
+
+  @@index([userId])
+  @@index([changeType])
+  @@index([timestamp])
+  @@index([toStatus])
+  @@map("subscription_change_logs")
+}
+
+// ============================================================================
+// ANALYTICS AGGREGATION TABLES (Space-Efficient Historical Data)
+// ============================================================================
+
+// Daily User Stats - Aggregated daily metrics (long-term storage)
+model DailyUserStats {
+  id                String   @id @default(cuid())
+  date              DateTime @db.Date
+
+  // User counts
+  totalUsers        Int      @default(0)
+  newUsers          Int      @default(0)
+  activeUsers       Int      @default(0) // Logged in that day
+  paidUsers         Int      @default(0)
+  freeUsers         Int      @default(0)
+
+  // Activity
+  totalLogins       Int      @default(0)
+  failedLogins      Int      @default(0)
+  totalPageViews    Int      @default(0)
+
+  // Device breakdown
+  mobileUsers       Int      @default(0)
+  desktopUsers      Int      @default(0)
+  tabletUsers       Int      @default(0)
+
+  // Geography (top 5 countries as JSON array)
+  topCountries      Json?    // [{"country": "US", "count": 100}, ...]
+
+  // Revenue
+  revenue           Decimal? @db.Decimal(10, 2)
+  newSubscriptions  Int      @default(0)
+  cancelledSubscriptions Int @default(0)
+
+  createdAt         DateTime @default(now())
+
+  @@unique([date])
+  @@index([date])
+  @@map("daily_user_stats")
+}
+
+// Hourly Activity Stats - Recent detailed metrics (shorter retention)
+model HourlyActivityStats {
+  id              String   @id @default(cuid())
+  hour            DateTime @db.Timestamp()
+
+  // Activity counts
+  pageViews       Int      @default(0)
+  uniqueVisitors  Int      @default(0)
+  logins          Int      @default(0)
+  errors          Int      @default(0)
+  apiCalls        Int      @default(0)
+
+  // Performance
+  avgResponseTime Int?     // milliseconds
+  errorRate       Decimal? @db.Decimal(5, 2) // percentage
+
+  createdAt       DateTime @default(now())
+
+  @@unique([hour])
+  @@index([hour])
+  @@map("hourly_activity_stats")
+}
+
+// Feature Usage Stats - Track which features are used (aggregated)
+model FeatureUsageStats {
+  id              String   @id @default(cuid())
+  date            DateTime @db.Date
+  featureName     String   // "2FA", "Profile_Edit", "Analytics_View", etc.
+
+  // Usage counts
+  totalUses       Int      @default(0)
+  uniqueUsers     Int      @default(0)
+
+  // User type breakdown
+  freeUserUses    Int      @default(0)
+  paidUserUses    Int      @default(0)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([date, featureName])
+  @@index([date])
+  @@index([featureName])
+  @@map("feature_usage_stats")
+}
+
+// Enum for user roles
+enum Role {
+  USER
+  ADMIN
+}
+
+// Enum for log levels
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+// Enum for audit log severity
+enum AuditSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// Enum for cron job status
+enum CronStatus {
+  RUNNING
+  SUCCESS
+  FAILURE
+}
+
+// Enum for alert types
+enum AlertType {
+  SECURITY
+  ERROR
+  INFO
+  WARNING
+}
+
+// Enum for notification channels
+enum ChannelType {
+  TELEGRAM
+  EMAIL
+  WEBHOOK
+}

@@ -1,0 +1,370 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import {
+  Card,
+  Row,
+  Col,
+  Typography,
+  Space,
+  Spin,
+  Flex,
+  Statistic,
+  Progress,
+  Button,
+  Alert,
+  Result,
+  theme,
+} from "antd"
+import {
+  LoadingOutlined,
+  LineChartOutlined,
+  RiseOutlined,
+  UserOutlined,
+  DollarOutlined,
+  CrownOutlined,
+  LockOutlined,
+  ArrowRightOutlined,
+} from "@ant-design/icons"
+import Link from "next/link"
+import SidebarLayout from "@/components/sidebar-layout"
+
+const { Title, Paragraph, Text } = Typography
+
+export default function FeaturesPage() {
+  const { data: session, status } = useSession()
+  const [featuresData, setFeaturesData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string>("")
+  const router = useRouter()
+  const { token } = theme.useToken()
+
+  // Redirect if session becomes invalid
+  useEffect(() => {
+    if (status === "loading") return
+    if (!session) {
+      router.push('/login')
+    }
+  }, [session, status, router])
+
+  // Load features data only once on mount
+  useEffect(() => {
+    if (status === "loading") return
+    if (!session) return
+
+    async function loadData() {
+      try {
+        // Fetch features data - this endpoint validates subscription server-side
+        const analyticsResponse = await fetch('/api/features')
+
+        if (analyticsResponse.status === 403) {
+          // No active subscription - will show upgrade prompt
+          setLoading(false)
+          return
+        }
+
+        if (!analyticsResponse.ok) {
+          throw new Error('Failed to fetch analytics data')
+        }
+
+        const data = await analyticsResponse.json()
+        setFeaturesData(data)
+      } catch (error) {
+        console.error('Failed to load data:', error)
+        setError('Failed to load analytics data. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  if (status === "loading" || loading || !session) {
+    return (
+      <SidebarLayout>
+        <Flex align="center" justify="center" style={{ minHeight: "calc(100vh - 64px)" }}>
+          <Spin
+            indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
+            size="large"
+          />
+        </Flex>
+      </SidebarLayout>
+    )
+  }
+
+  // Non-subscribers see upgrade prompt (no featuresData means subscription check failed)
+  if (!featuresData) {
+    return (
+      <SidebarLayout>
+        <Flex
+          vertical
+          align="center"
+          justify="center"
+          style={{ minHeight: "calc(100vh - 64px)", padding: "32px 16px" }}
+        >
+          <Card style={{ maxWidth: "800px", width: "100%" }}>
+            <Result
+              icon={<LockOutlined style={{ color: token.colorWarning, fontSize: 72 }} />}
+              title={
+                <Title level={2} style={{ marginTop: 16 }}>
+                  Premium Feature
+                </Title>
+              }
+              subTitle={
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                  <Paragraph style={{ fontSize: 16 }}>
+                    Premium Features are available to subscribers only.
+                  </Paragraph>
+                  <Card
+                    style={{
+                      background: `linear-gradient(135deg, ${token.colorPrimary}15 0%, ${token.colorWarning}15 100%)`,
+                      border: `1px solid ${token.colorPrimary}30`,
+                    }}
+                  >
+                    <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                      <Flex align="center" gap="small">
+                        <CrownOutlined style={{ fontSize: 24, color: token.colorWarning }} />
+                        <Title level={4} style={{ margin: 0 }}>
+                          Unlock Premium Features
+                        </Title>
+                      </Flex>
+                      <ul style={{ margin: "16px 0", paddingLeft: 20 }}>
+                        <li>
+                          <Text>Advanced analytics and insights</Text>
+                        </li>
+                        <li>
+                          <Text>Custom reports and data exports</Text>
+                        </li>
+                        <li>
+                          <Text>Priority customer support</Text>
+                        </li>
+                        <li>
+                          <Text>Extended storage limits</Text>
+                        </li>
+                        <li>
+                          <Text>API access and integrations</Text>
+                        </li>
+                        <li>
+                          <Text>Early access to new features</Text>
+                        </li>
+                      </ul>
+                    </Space>
+                  </Card>
+                </Space>
+              }
+              extra={
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                  <Link href="/pricing">
+                    <Button
+                      type="primary"
+                      size="large"
+                      icon={<CrownOutlined />}
+                      block
+                    >
+                      Upgrade to Premium
+                    </Button>
+                  </Link>
+                  <Link href="/profile">
+                    <Button size="large" icon={<ArrowRightOutlined />} block>
+                      Back to Dashboard
+                    </Button>
+                  </Link>
+                </Space>
+              }
+            />
+          </Card>
+        </Flex>
+      </SidebarLayout>
+    )
+  }
+
+  // Subscribers see the actual analytics
+  return (
+    <SidebarLayout>
+      <Flex vertical style={{ maxWidth: '1400px', margin: '0 auto', padding: '32px 16px', width: '100%' }}>
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          {/* Header */}
+          <Flex justify="space-between" align="start" wrap="wrap" gap="middle">
+            <Flex vertical>
+              <Flex align="center" gap="middle">
+                <CrownOutlined style={{ fontSize: 32, color: token.colorPrimary }} />
+                <Title level={1} style={{ margin: 0 }}>Premium Features</Title>
+              </Flex>
+              <Paragraph type="secondary">
+                Exclusive features and capabilities for premium members
+              </Paragraph>
+            </Flex>
+            <Flex
+              align="center"
+              gap="small"
+              style={{
+                padding: "8px 16px",
+                background: `linear-gradient(135deg, ${token.colorWarning}20 0%, ${token.colorPrimary}20 100%)`,
+                borderRadius: 8,
+                border: `1px solid ${token.colorWarning}40`,
+              }}
+            >
+              <CrownOutlined style={{ color: token.colorWarning, fontSize: 20 }} />
+              <Text strong>Premium Member</Text>
+            </Flex>
+          </Flex>
+
+          {/* Alert for expiring subscription */}
+          {featuresData?.subscriptionExpiresInDays &&
+           featuresData.subscriptionExpiresInDays <= 7 &&
+           featuresData.subscriptionExpiresInDays > 0 && (
+            <Alert
+              message="Subscription Expiring Soon"
+              description={`Your premium subscription expires in ${featuresData.subscriptionExpiresInDays} days. Renew now to keep access to all premium features.`}
+              type="warning"
+              showIcon
+              action={
+                <Link href="/pricing">
+                  <Button size="small" type="primary">
+                    Renew Now
+                  </Button>
+                </Link>
+              }
+            />
+          )}
+
+          {/* Stats Overview */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="Total Users"
+                  value={1234}
+                  prefix={<UserOutlined />}
+                  valueStyle={{ color: token.colorPrimary }}
+                />
+                <Progress percent={75} showInfo={false} strokeColor={token.colorPrimary} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  +12% from last month
+                </Text>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="Revenue"
+                  value={45678}
+                  prefix={<DollarOutlined />}
+                  precision={2}
+                  valueStyle={{ color: token.colorSuccess }}
+                />
+                <Progress percent={85} showInfo={false} strokeColor={token.colorSuccess} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  +23% from last month
+                </Text>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="Growth Rate"
+                  value={28.5}
+                  suffix="%"
+                  prefix={<RiseOutlined />}
+                  valueStyle={{ color: token.colorWarning }}
+                />
+                <Progress percent={60} showInfo={false} strokeColor={token.colorWarning} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  +5% from last month
+                </Text>
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="Conversions"
+                  value={567}
+                  valueStyle={{ color: token.colorError }}
+                />
+                <Progress percent={45} showInfo={false} strokeColor={token.colorError} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  +8% from last month
+                </Text>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* Detailed Analytics Cards */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Card title="User Activity" extra={<Button type="link">View Details</Button>}>
+                <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                  <Flex justify="space-between" align="center">
+                    <Text>Active Today</Text>
+                    <Text strong style={{ fontSize: 18 }}>892</Text>
+                  </Flex>
+                  <Progress percent={72} strokeColor={token.colorPrimary} />
+
+                  <Flex justify="space-between" align="center">
+                    <Text>Active This Week</Text>
+                    <Text strong style={{ fontSize: 18 }}>3,456</Text>
+                  </Flex>
+                  <Progress percent={58} strokeColor={token.colorSuccess} />
+
+                  <Flex justify="space-between" align="center">
+                    <Text>New Sign-ups</Text>
+                    <Text strong style={{ fontSize: 18 }}>234</Text>
+                  </Flex>
+                  <Progress percent={42} strokeColor={token.colorWarning} />
+                </Space>
+              </Card>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Card title="Revenue Breakdown" extra={<Button type="link">Export Data</Button>}>
+                <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                  <Flex justify="space-between" align="center">
+                    <Text>Subscription Revenue</Text>
+                    <Text strong style={{ fontSize: 18 }}>$32,450</Text>
+                  </Flex>
+                  <Progress percent={65} strokeColor={token.colorSuccess} />
+
+                  <Flex justify="space-between" align="center">
+                    <Text>One-time Purchases</Text>
+                    <Text strong style={{ fontSize: 18 }}>$8,920</Text>
+                  </Flex>
+                  <Progress percent={18} strokeColor={token.colorPrimary} />
+
+                  <Flex justify="space-between" align="center">
+                    <Text>Add-ons</Text>
+                    <Text strong style={{ fontSize: 18 }}>$4,308</Text>
+                  </Flex>
+                  <Progress percent={17} strokeColor={token.colorWarning} />
+                </Space>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* Feature Highlight */}
+          <Card>
+            <Flex vertical align="center" style={{ textAlign: "center", padding: "24px" }}>
+              <CrownOutlined style={{ fontSize: 48, color: token.colorWarning, marginBottom: 16 }} />
+              <Title level={3}>Thank you for being a Premium Member!</Title>
+              <Paragraph type="secondary" style={{ maxWidth: 600, marginBottom: 24 }}>
+                You have access to all premium features including advanced analytics,
+                priority support, and unlimited exports. Need help? Contact our support team anytime.
+              </Paragraph>
+              <Space>
+                <Button type="primary" size="large">
+                  Contact Support
+                </Button>
+                <Link href="/pricing">
+                  <Button size="large">Manage Subscription</Button>
+                </Link>
+              </Space>
+            </Flex>
+          </Card>
+        </Space>
+      </Flex>
+    </SidebarLayout>
+  )
+}

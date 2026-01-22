@@ -1,0 +1,296 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import {
+  Card,
+  Typography,
+  Spin,
+  Flex,
+  Statistic,
+  Row,
+  Col,
+  Alert,
+  Tag,
+  List,
+  Progress,
+} from "antd"
+import {
+  DashboardOutlined,
+  UserOutlined,
+  WarningOutlined,
+  ClockCircleOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  CrownOutlined,
+  DatabaseOutlined,
+} from "@ant-design/icons"
+import SidebarLayout from "@/components/sidebar-layout"
+import dayjs from "dayjs"
+import duration from "dayjs/plugin/duration"
+
+dayjs.extend(duration)
+
+const { Title, Text, Paragraph } = Typography
+
+interface DashboardStats {
+  failedLogins: number
+  activeUsers: {
+    last24h: number
+    last7d: number
+    last30d: number
+  }
+  errors: {
+    last24h: number
+  }
+  criticalAlerts: number
+  topAdmins: Array<{
+    admin: {
+      name: string
+      email: string
+    }
+    actionCount: number
+  }>
+  system: {
+    totalUsers: number
+    paidUsers: number
+    totalLogs: number
+    uptime: number
+  }
+}
+
+export default function AdminDashboardPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (status === "loading") return
+    if (!session || session.user.role !== "ADMIN") {
+      router.push("/dashboard")
+    } else {
+      fetchStats()
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchStats, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [session, status, router])
+
+  const fetchStats = async () => {
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/admin/dashboard/stats")
+      if (res.ok) {
+        const data = await res.json()
+        setStats(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch stats:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const formatUptime = (seconds: number) => {
+    const dur = dayjs.duration(seconds, "seconds")
+    const days = Math.floor(dur.asDays())
+    const hours = dur.hours()
+    const minutes = dur.minutes()
+    return `${days}d ${hours}h ${minutes}m`
+  }
+
+  if (isLoading || !session || !stats) {
+    return (
+      <SidebarLayout>
+        <Flex align="center" justify="center" style={{ minHeight: "calc(100vh - 64px)" }}>
+          <Spin size="large" />
+        </Flex>
+      </SidebarLayout>
+    )
+  }
+
+  const subscriptionRate = stats.system.totalUsers > 0
+    ? (stats.system.paidUsers / stats.system.totalUsers) * 100
+    : 0
+
+  return (
+    <SidebarLayout>
+      <Flex vertical style={{ maxWidth: "1600px", margin: "0 auto", padding: "32px 16px", width: "100%" }}>
+        <Flex justify="space-between" align="center" wrap="wrap" gap="middle" style={{ marginBottom: 24 }}>
+          <Flex vertical>
+            <Flex align="center" gap="middle">
+              <DashboardOutlined style={{ fontSize: 32, color: "#1890ff" }} />
+              <Title level={1} style={{ margin: 0 }}>Dashboard</Title>
+            </Flex>
+            <Paragraph type="secondary">
+              System overview and key metrics
+            </Paragraph>
+          </Flex>
+        </Flex>
+
+        {/* Critical Alerts */}
+        {stats.criticalAlerts > 0 && (
+          <Alert
+            message={`${stats.criticalAlerts} Active Critical Alert${stats.criticalAlerts > 1 ? "s" : ""}`}
+            description="There are unresolved security or error alerts that require attention."
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            action={
+              <a href="/admin/alerts">View Alerts</a>
+            }
+          />
+        )}
+
+        {/* Key Metrics */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Failed Logins (24h)"
+                value={stats.failedLogins}
+                prefix={<WarningOutlined />}
+                valueStyle={{ color: stats.failedLogins > 10 ? "#cf1322" : undefined }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Errors (24h)"
+                value={stats.errors.last24h}
+                prefix={<CloseCircleOutlined />}
+                valueStyle={{ color: stats.errors.last24h > 20 ? "#cf1322" : undefined }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Active Users (24h)"
+                value={stats.activeUsers.last24h}
+                prefix={<UserOutlined />}
+                valueStyle={{ color: "#3f8600" }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Critical Alerts"
+                value={stats.criticalAlerts}
+                prefix={<WarningOutlined />}
+                valueStyle={{ color: stats.criticalAlerts > 0 ? "#cf1322" : "#3f8600" }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {/* User Activity */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+          <Col xs={24} lg={12}>
+            <Card title="User Activity" extra={<UserOutlined />}>
+              <Flex vertical gap="middle">
+                <div>
+                  <Flex justify="space-between" style={{ marginBottom: 8 }}>
+                    <Text>Last 24 Hours</Text>
+                    <Text strong>{stats.activeUsers.last24h} users</Text>
+                  </Flex>
+                  <Progress
+                    percent={Math.min((stats.activeUsers.last24h / stats.system.totalUsers) * 100, 100)}
+                    showInfo={false}
+                  />
+                </div>
+                <div>
+                  <Flex justify="space-between" style={{ marginBottom: 8 }}>
+                    <Text>Last 7 Days</Text>
+                    <Text strong>{stats.activeUsers.last7d} users</Text>
+                  </Flex>
+                  <Progress
+                    percent={Math.min((stats.activeUsers.last7d / stats.system.totalUsers) * 100, 100)}
+                    status="active"
+                    showInfo={false}
+                  />
+                </div>
+                <div>
+                  <Flex justify="space-between" style={{ marginBottom: 8 }}>
+                    <Text>Last 30 Days</Text>
+                    <Text strong>{stats.activeUsers.last30d} users</Text>
+                  </Flex>
+                  <Progress
+                    percent={Math.min((stats.activeUsers.last30d / stats.system.totalUsers) * 100, 100)}
+                    status="success"
+                    showInfo={false}
+                  />
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <Card title="Top Active Admins (7d)" extra={<CrownOutlined />}>
+              <List
+                size="small"
+                dataSource={stats.topAdmins}
+                renderItem={(item, index) => (
+                  <List.Item>
+                    <Flex justify="space-between" style={{ width: "100%" }}>
+                      <Flex gap="small">
+                        <Tag color="blue">#{index + 1}</Tag>
+                        <Text>{item.admin.name}</Text>
+                      </Flex>
+                      <Text type="secondary">{item.actionCount} actions</Text>
+                    </Flex>
+                  </List.Item>
+                )}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {/* System Info */}
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Total Users"
+                value={stats.system.totalUsers}
+                prefix={<UserOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Paid Subscribers"
+                value={stats.system.paidUsers}
+                prefix={<CrownOutlined />}
+                suffix={`(${subscriptionRate.toFixed(1)}%)`}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Total Logs"
+                value={stats.system.totalLogs.toLocaleString()}
+                prefix={<DatabaseOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="System Uptime"
+                value={formatUptime(stats.system.uptime)}
+                prefix={<ClockCircleOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
+      </Flex>
+    </SidebarLayout>
+  )
+}
