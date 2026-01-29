@@ -60,4 +60,5 @@ docs
 .claude
 /tempApi
 /tempFrontend
-additionalTables.sql
+# additionalTables.sql
+.env.md

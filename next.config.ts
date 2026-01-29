@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+
   // Security: Limit request body size to prevent DoS attacks
   experimental: {
     serverActions: {
