@@ -22,6 +22,8 @@ import {
   BellOutlined,
   ControlOutlined,
   ExclamationCircleOutlined,
+  SwapOutlined,
+  StockOutlined,
 } from "@ant-design/icons"
 import Link from "next/link"
 import { useSession, signOut } from "next-auth/react"
@@ -154,9 +156,14 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       label: <Link href="/pricing">Pricing</Link>,
     },
     {
-      key: "/features",
-      icon: <CrownOutlined />,
-      label: <Link href="/features">Features</Link>,
+      key: "/arbitrage-spot",
+      icon: <SwapOutlined />,
+      label: <Link href="/arbitrage-spot">Arbitrage Spot</Link>,
+    },
+    {
+      key: "/arbitrage-futures",
+      icon: <StockOutlined />,
+      label: <Link href="/arbitrage-futures">Arbitrage Futures</Link>,
     },
     ...(session?.user.role === "ADMIN"
       ? [

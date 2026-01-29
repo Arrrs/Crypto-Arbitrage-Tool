@@ -56,3 +56,8 @@ Thumbs.db
 
 # User uploads
 /public/uploads/
+docs
+.claude
+/tempApi
+/tempFrontend
+additionalTables.sql

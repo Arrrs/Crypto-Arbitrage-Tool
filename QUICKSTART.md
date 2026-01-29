@@ -246,3 +246,34 @@ nextAuth/
 ---
 
 **Need more help?** Check the full documentation in the `docs/` folder!
+
+
+
+
+
+# 1. Install dependencies
+npm install
+
+# 2. Set up your .env file (copy and edit with your values)
+cp .env.example .env  # or create manually
+
+# 3. Run database migrations
+npx prisma migrate deploy
+
+# 4. Run additional tables (your custom arb tables)
+npx prisma db execute --file additionalTables.sql
+
+# 5. Seed admin user and system settings
+npx prisma db seed
+
+# 6. Start the app
+npm run dev        # development
+npm run build && npm start  # production
+
+
+
+
+
+
+
+Great. I have a separate project that runs and updates all the time that tables in our db (pairs, diffs and others that i asked to create). Before i had api in go in the same project to get those data. But now i want to run them separately. So db updates without our help and i want to get data to our view from that db using next api that we have here. We need to create protected pages (like we have now "/features" for registred paid users) Arbitrage Spot and Arbitrage Features (middleware should also worked as it should). In each of them we should put tables from /tempFrontend (i added it as a previous template that should be implemented). We need to create api in project that will take data from our db and i added file /tempApi/routes.go for you as a reference so you know what should be recreated. I hope you understand what i want to do here and how to implement it. You can ask me questions for additional details. Everything should be in antd elements. The code can be optimized of course. And also 

@@ -147,7 +147,8 @@ export async function middleware(req: NextRequest) {
   const isProtectedPage =
     req.nextUrl.pathname.startsWith("/profile") ||
     req.nextUrl.pathname.startsWith("/admin") ||
-    req.nextUrl.pathname.startsWith("/features")
+    req.nextUrl.pathname.startsWith("/arbitrage-spot") ||
+    req.nextUrl.pathname.startsWith("/arbitrage-futures")
 
   // Check for session cookie (basic check, not validating against DB)
   const sessionCookie = req.cookies.get(
