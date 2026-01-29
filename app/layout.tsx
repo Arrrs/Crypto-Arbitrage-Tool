@@ -3,8 +3,8 @@ import { Providers } from "./providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "App",
-  description: "Next.js authentication app with Prisma and Auth.js",
+  title: "ArbTool - Crypto Arbitrage Scanner",
+  description: "Real-time cryptocurrency arbitrage opportunities across multiple exchanges",
 }
 
 export default function RootLayout({

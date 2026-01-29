@@ -14,7 +14,7 @@ import { logger } from "./logger"
  * Generate a new 2FA secret for a user
  * Returns the secret and otpauth URL for QR code generation
  */
-export function generateTOTPSecret(email: string, appName: string = "NextAuth App") {
+export function generateTOTPSecret(email: string, appName: string = "ArbTool") {
   const secret = speakeasy.generateSecret({
     name: `${appName} (${email})`,
     issuer: appName,

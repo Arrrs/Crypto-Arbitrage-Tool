@@ -19,14 +19,23 @@ async function main() {
         email: adminEmail,
         password: adminPassword,
         role: "ADMIN",
+        emailVerified: new Date(),
       },
     })
 
     console.log("Admin user created: ")
     console.log("Email: ", admin.email)
-    console.log("Password: ", adminPassword)
   } else {
-    console.log("Admin user already exists")
+    // Update existing admin password and ensure emailVerified is set
+    await prisma.user.update({
+      where: { email: adminEmail },
+      data: {
+        password: adminPassword,
+        emailVerified: existingAdmin.emailVerified || new Date(),
+      },
+    })
+    console.log("Admin user password updated")
+    console.log("Email: ", adminEmail)
   }
 
   // Create a regular test user

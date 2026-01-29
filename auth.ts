@@ -118,7 +118,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: false, // Set to false for local development
+        secure: false,
       },
     },
   },

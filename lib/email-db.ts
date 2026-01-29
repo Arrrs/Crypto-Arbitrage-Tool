@@ -218,7 +218,7 @@ export async function sendVerificationEmail(email: string, token: string) {
             </p>
           </div>
           <p style="font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+            © ${new Date().getFullYear()} ArbTool. All rights reserved.
           </p>
         </body>
       </html>
@@ -232,7 +232,7 @@ export async function sendVerificationEmail(email: string, token: string) {
 
       This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.
 
-      © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+      © ${new Date().getFullYear()} ArbTool. All rights reserved.
     `,
   })
 }
@@ -272,7 +272,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
             </p>
           </div>
           <p style="font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+            © ${new Date().getFullYear()} ArbTool. All rights reserved.
           </p>
         </body>
       </html>
@@ -286,7 +286,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
 
       This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
 
-      © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+      © ${new Date().getFullYear()} ArbTool. All rights reserved.
     `,
   })
 }
@@ -342,7 +342,7 @@ export async function sendEmailChangeVerification(
             </p>
           </div>
           <p style="font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+            © ${new Date().getFullYear()} ArbTool. All rights reserved.
           </p>
         </body>
       </html>
@@ -363,7 +363,7 @@ Important:
 
 If you didn't request this email change, you can safely ignore this email. A security notification has been sent to your current email address.
 
-© ${new Date().getFullYear()} AUTH APP. All rights reserved.
+© ${new Date().getFullYear()} ArbTool. All rights reserved.
     `,
   })
 }
@@ -440,7 +440,7 @@ export async function sendEmailChangeNotification(
             </p>
           </div>
           <p style="font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+            © ${new Date().getFullYear()} ArbTool. All rights reserved.
           </p>
         </body>
       </html>
@@ -474,7 +474,7 @@ View account settings: ${dashboardUrl}
 
 This is an automated security notification. You're receiving this because your email address was requested to be changed.
 
-© ${new Date().getFullYear()} AUTH APP. All rights reserved.
+© ${new Date().getFullYear()} ArbTool. All rights reserved.
     `,
   })
 }
@@ -547,7 +547,7 @@ export async function sendAlertEmail(
             </p>
           </div>
           <p style="font-size: 12px; color: #999; text-align: center;">
-            © ${new Date().getFullYear()} AUTH APP. All rights reserved.
+            © ${new Date().getFullYear()} ArbTool. All rights reserved.
           </p>
         </body>
       </html>
@@ -565,7 +565,7 @@ ${detailsText ? `Details:\n${detailsText}\n` : ""}
 
 This is an automated alert from your monitoring system. Please review and take appropriate action if needed.
 
-© ${new Date().getFullYear()} AUTH APP. All rights reserved.
+© ${new Date().getFullYear()} ArbTool. All rights reserved.
     `,
   })
 }

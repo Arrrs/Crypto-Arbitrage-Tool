@@ -221,7 +221,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
               color: token.colorPrimary,
             }}
           >
-            {collapsed ? "AA" : "AUTH APP"}
+            {collapsed ? "AT" : "ArbTool"}
           </Text>
         </Link>
       </Flex>
@@ -384,7 +384,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
                 style={{ fontSize: 18 }}
               />
             ) : !isLoading && !session ? (
-              // Not logged in (after loading): Show AA logo
+              // Not logged in (after loading): Show AT logo
               <Link href="/">
                 <Text
                   strong
@@ -393,7 +393,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
                     color: token.colorPrimary,
                   }}
                 >
-                  AA
+                  AT
                 </Text>
               </Link>
             ) : (

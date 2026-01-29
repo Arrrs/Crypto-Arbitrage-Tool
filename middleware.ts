@@ -214,7 +214,6 @@ export async function middleware(req: NextRequest) {
       "camera=()",
       "microphone=()",
       "geolocation=()",
-      "interest-cohort=()", // Disable FLoC tracking
     ].join(", "),
   }
 

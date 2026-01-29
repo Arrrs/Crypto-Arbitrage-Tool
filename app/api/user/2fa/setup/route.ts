@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       qrCodeUrl,
       backupCodes,
       backupCodesHashed,
-    } = await setupTwoFactor(user.email, "NextAuth App")
+    } = await setupTwoFactor(user.email, "ArbTool")
 
     // Store secret and backup codes in database (but don't enable 2FA yet)
     // User must verify a token first to confirm their authenticator app is working
