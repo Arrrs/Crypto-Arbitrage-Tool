@@ -11,6 +11,7 @@ Real-time cryptocurrency arbitrage scanner that monitors price differences acros
 
 ## Screenshots
 
+| | | |
 |:---:|:---:|:---:|
 | ![Screenshot](images/scr1.png) | ![Screenshot](images/scr2.png) | ![Screenshot](images/scr3.png) |
 | ![Screenshot](images/scr4.png) | ![Screenshot](images/scr5.png) | ![Screenshot](images/scr6.png) |
