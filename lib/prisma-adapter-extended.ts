@@ -1,14 +1,19 @@
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import type { Adapter } from "next-auth/adapters"
 import { prisma } from "@/lib/prisma"
+import { notifyNewUserRegistration } from "@/lib/telegram"
+
+// Trial duration in days (same as in register route)
+const TRIAL_DURATION_DAYS = 2
 
 /**
  * Extended Prisma Adapter
  *
  * Extends NextAuth's Prisma adapter to:
  * 1. Ensure emailVerified is set for OAuth users
- * 2. Capture session metadata (userAgent, IP, location) synchronously during session creation
- * 3. Update lastActive timestamp on session updates
+ * 2. Grant trial access to new OAuth users
+ * 3. Capture session metadata (userAgent, IP, location) synchronously during session creation
+ * 4. Update lastActive timestamp on session updates
  */
 export function ExtendedPrismaAdapter(): Adapter {
   const baseAdapter = PrismaAdapter(prisma) as Adapter
@@ -16,25 +21,37 @@ export function ExtendedPrismaAdapter(): Adapter {
   return {
     ...baseAdapter,
 
-    // Override createUser to ensure emailVerified is set for OAuth users
+    // Override createUser to set up OAuth users with trial access
     async createUser(user) {
       // Call the original createUser
       const createdUser = await baseAdapter.createUser!(user)
 
-      // For OAuth users, ensure emailVerified is set
-      // (NextAuth's adapter may not set this automatically)
-      if (user.emailVerified || user.email) {
-        try {
-          await prisma.user.update({
-            where: { id: createdUser.id },
-            data: {
-              emailVerified: user.emailVerified || new Date(),
-            },
-          })
-          console.log("[ExtendedPrismaAdapter] Email verified for OAuth user:", createdUser.email)
-        } catch (error) {
-          console.error("[ExtendedPrismaAdapter] Failed to verify email:", error)
-        }
+      // Calculate trial expiration date
+      const trialExpiresAt = new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
+
+      // For OAuth users, ensure emailVerified is set AND grant trial access
+      try {
+        await prisma.user.update({
+          where: { id: createdUser.id },
+          data: {
+            emailVerified: user.emailVerified || new Date(),
+            isPaid: true, // Grant trial access
+            paidUntil: trialExpiresAt, // Trial expires after TRIAL_DURATION_DAYS
+          },
+        })
+        console.log("[ExtendedPrismaAdapter] OAuth user created with trial access:", createdUser.email)
+
+        // Send Telegram notification (don't await to avoid blocking)
+        notifyNewUserRegistration({
+          id: createdUser.id,
+          name: createdUser.name,
+          email: createdUser.email!,
+          trialExpiresAt,
+        }).catch((err) => {
+          console.error("[ExtendedPrismaAdapter] Failed to send Telegram notification:", err)
+        })
+      } catch (error) {
+        console.error("[ExtendedPrismaAdapter] Failed to set up OAuth user:", error)
       }
 
       return createdUser

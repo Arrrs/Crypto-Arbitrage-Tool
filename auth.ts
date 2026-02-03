@@ -185,13 +185,19 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
           // Check if user with this email already exists (created via credentials)
           const existingUser = await prisma.user.findUnique({
             where: { email: normalizedEmail },
-            include: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              role: true,
+              isPaid: true,
+              paidUntil: true,
               accounts: {
                 where: {
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
                 }
-              }
+              },
             }
           })
 
@@ -224,14 +230,33 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
             }
 
             // Update existing user with OAuth data
+            // Also grant trial access if user doesn't have any subscription yet
+            const needsTrial = !existingUser.isPaid && !existingUser.paidUntil
+            const trialExpiresAt = needsTrial
+              ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days trial
+              : undefined
+
             await prisma.user.update({
               where: { email: normalizedEmail },
               data: {
                 name: user.name || existingUser.name,
                 image: user.image || existingUser.image,
                 emailVerified: new Date(),
+                ...(needsTrial ? { isPaid: true, paidUntil: trialExpiresAt } : {}),
               },
             })
+
+            // Send Telegram notification for new trial grant
+            if (needsTrial && trialExpiresAt) {
+              import("@/lib/telegram").then(({ notifyNewUserRegistration }) => {
+                notifyNewUserRegistration({
+                  id: existingUser.id,
+                  name: user.name || existingUser.name,
+                  email: normalizedEmail,
+                  trialExpiresAt,
+                }).catch(() => {})
+              }).catch(() => {})
+            }
 
             // Update user object with database ID for session
             user.id = existingUser.id
