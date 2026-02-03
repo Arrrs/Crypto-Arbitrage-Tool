@@ -44,7 +44,7 @@ export function ExtendedPrismaAdapter(): Adapter {
         // Send Telegram notification (don't await to avoid blocking)
         notifyNewUserRegistration({
           id: createdUser.id,
-          name: createdUser.name,
+          name: createdUser.name ?? null,
           email: createdUser.email!,
           trialExpiresAt,
         }).catch((err) => {
