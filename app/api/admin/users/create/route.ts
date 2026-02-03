@@ -4,6 +4,18 @@ import { requireAdmin } from "@/lib/admin"
 import { logAdminAction, logger, getRequestId } from "@/lib/logger"
 import { validateCsrfToken } from "@/lib/csrf"
 import bcrypt from "bcryptjs"
+import { z } from "zod"
+
+// Zod schema for input validation - whitelist allowed values
+const createUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email().max(255),
+  password: z.string().min(8).max(128).optional(),
+  role: z.enum(["USER", "ADMIN"]).default("USER"),
+  adminVerified: z.boolean().default(false),
+  isPaid: z.boolean().default(false),
+  paidUntil: z.string().datetime().optional().nullable(),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,15 +35,17 @@ export async function POST(request: NextRequest) {
 
     const requestId = getRequestId(request)
     const body = await request.json()
-    const { name, email, password, role, adminVerified, isPaid, paidUntil } = body
 
-    // Validate required fields
-    if (!email || !name) {
+    // Validate input with Zod schema
+    const validation = createUserSchema.safeParse(body)
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "Name and email are required" },
+        { error: "Invalid input", details: validation.error.flatten() },
         { status: 400 }
       )
     }
+
+    const { name, email, password, role, adminVerified, isPaid, paidUntil } = validation.data
 
     // Normalize email to lowercase for consistency
     const normalizedEmail = email.toLowerCase().trim()

@@ -24,6 +24,9 @@ export async function GET() {
     const responseTime = Date.now() - startTime
     const uptime = process.uptime()
 
+    // Don't expose version/environment in production (fingerprinting risk)
+    const isProduction = process.env.NODE_ENV === "production"
+
     return NextResponse.json(
       {
         status: "ok",
@@ -31,8 +34,11 @@ export async function GET() {
         uptime: Math.floor(uptime),
         database: "connected",
         responseTime: `${responseTime}ms`,
-        version: process.env.npm_package_version || "1.0.0",
-        environment: process.env.NODE_ENV || "development",
+        // Only expose version/environment in development
+        ...(isProduction ? {} : {
+          version: process.env.npm_package_version || "1.0.0",
+          environment: process.env.NODE_ENV || "development",
+        }),
       },
       { status: 200 }
     )

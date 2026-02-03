@@ -195,10 +195,17 @@ export async function middleware(req: NextRequest) {
     }),
 
     // Content Security Policy
+    // Note: 'unsafe-eval' required by Next.js for development hot-reload
+    // Note: 'unsafe-inline' required by Ant Design CSS-in-JS
+    // In production, we tighten where possible
     "Content-Security-Policy": [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-inline needed for Next.js
-      "style-src 'self' 'unsafe-inline'", // unsafe-inline needed for Ant Design
+      // Production: remove unsafe-eval (only needed for dev hot-reload)
+      // unsafe-inline still needed for Ant Design styles injected at runtime
+      process.env.NODE_ENV === "production"
+        ? "script-src 'self' 'unsafe-inline'"
+        : "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'", // Required for Ant Design CSS-in-JS
       "img-src 'self' data: https: blob:", // Allow external images
       "font-src 'self' data:",
       "connect-src 'self' https://accounts.google.com https://*.google.com", // Google OAuth
@@ -207,6 +214,7 @@ export async function middleware(req: NextRequest) {
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
+      "upgrade-insecure-requests", // Force HTTPS for all resources
     ].join("; "),
 
     // Permissions Policy
@@ -228,10 +236,20 @@ export async function middleware(req: NextRequest) {
   // CORS headers for API routes
   if (req.nextUrl.pathname.startsWith("/api/")) {
     response.headers.set("Access-Control-Allow-Credentials", "true")
-    response.headers.set(
-      "Access-Control-Allow-Origin",
-      process.env.NEXT_PUBLIC_APP_URL || req.headers.get("origin") || "*"
-    )
+
+    // SECURITY: Only allow configured origin, never fall back to wildcard
+    const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL
+    const requestOrigin = req.headers.get("origin")
+
+    if (allowedOrigin) {
+      // Use configured origin
+      response.headers.set("Access-Control-Allow-Origin", allowedOrigin)
+    } else if (requestOrigin && process.env.NODE_ENV === "development") {
+      // Only allow request origin in development mode
+      response.headers.set("Access-Control-Allow-Origin", requestOrigin)
+    }
+    // In production without NEXT_PUBLIC_APP_URL, don't set CORS header (blocks cross-origin)
+
     response.headers.set(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, PATCH, DELETE, OPTIONS"
