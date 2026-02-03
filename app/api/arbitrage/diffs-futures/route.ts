@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getFuturesDiffs, checkSubscription, FuturesDiffsParams } from "@/lib/arbitrage"
 import { logger, getRequestId } from "@/lib/logger"
+import { notifyTrialExpired } from "@/lib/telegram"
 import { z } from "zod"
+
+// Track notified users to avoid spam (in-memory, resets on server restart)
+const notifiedExpiredUsers = new Set<string>()
 
 // Zod schema for input validation
 const futuresDiffsSchema = z.object({
@@ -29,10 +33,21 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription
-    const { hasSubscription } = await checkSubscription(session.user.id)
+    const { hasSubscription, isTrialExpired, user } = await checkSubscription(session.user.id)
     if (!hasSubscription) {
+      // Notify about trial expiration (once per server restart)
+      if (isTrialExpired && user && !notifiedExpiredUsers.has(user.id)) {
+        notifiedExpiredUsers.add(user.id)
+        notifyTrialExpired(user).catch(() => {})
+      }
+
       return NextResponse.json(
-        { error: "Premium subscription required" },
+        {
+          error: isTrialExpired
+            ? "Your trial has expired. Contact us to extend your access."
+            : "Premium subscription required",
+          code: isTrialExpired ? "TRIAL_EXPIRED" : "NO_SUBSCRIPTION",
+        },
         { status: 403 }
       )
     }

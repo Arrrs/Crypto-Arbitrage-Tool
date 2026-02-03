@@ -445,17 +445,22 @@ export async function getFuturesDiffs(params: FuturesDiffsParams): Promise<Futur
 export async function checkSubscription(userId: string): Promise<{
   hasSubscription: boolean
   expiresInDays: number | null
+  isTrialExpired: boolean
+  user: { id: string; name: string | null; email: string } | null
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
+      id: true,
+      name: true,
+      email: true,
       isPaid: true,
       paidUntil: true,
     },
   })
 
   if (!user) {
-    return { hasSubscription: false, expiresInDays: null }
+    return { hasSubscription: false, expiresInDays: null, isTrialExpired: false, user: null }
   }
 
   const now = new Date()
@@ -465,5 +470,13 @@ export async function checkSubscription(userId: string): Promise<{
     ? Math.ceil((new Date(user.paidUntil).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     : null
 
-  return { hasSubscription: !!hasSubscription, expiresInDays }
+  // Check if trial/subscription has expired (user had access before but not anymore)
+  const isTrialExpired = user.isPaid && user.paidUntil && new Date(user.paidUntil) <= now
+
+  return {
+    hasSubscription: !!hasSubscription,
+    expiresInDays,
+    isTrialExpired: !!isTrialExpired,
+    user: { id: user.id, name: user.name, email: user.email },
+  }
 }

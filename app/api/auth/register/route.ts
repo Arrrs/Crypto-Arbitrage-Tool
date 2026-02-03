@@ -3,10 +3,14 @@ import { hash } from "bcryptjs"
 import { prisma } from "@/lib/prisma"
 import { sendVerificationEmail } from "@/lib/email-db"
 import { checkRateLimit, getRateLimits } from "@/lib/rate-limit"
-import { logger, logSessionActivity, getRequestId } from "@/lib/logger"
+import { logger, getRequestId } from "@/lib/logger"
 import { registerSchema } from "@/lib/validation"
+import { notifyNewUserRegistration } from "@/lib/telegram"
 import { z } from "zod"
 import crypto from "crypto"
+
+// Trial duration in days
+const TRIAL_DURATION_DAYS = 2
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request)
@@ -66,13 +70,18 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await hash(password, 12)
 
-    // Create user without email verification
+    // Calculate trial expiration date
+    const trialExpiresAt = new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
+
+    // Create user with automatic trial access
     const user = await prisma.user.create({
       data: {
         name,
         email: normalizedEmail,
         password: hashedPassword,
         emailVerified: null, // Not verified yet
+        isPaid: true, // Grant trial access
+        paidUntil: trialExpiresAt, // Trial expires after TRIAL_DURATION_DAYS
       },
     })
 
@@ -104,9 +113,20 @@ export async function POST(request: NextRequest) {
     // Log successful registration
     await logger.info("New user registered", {
       category: "auth",
-      metadata: { userId: user.id, email: user.email },
+      metadata: { userId: user.id, email: user.email, trialDays: TRIAL_DURATION_DAYS },
       userId: user.id,
       requestId,
+    })
+
+    // Send Telegram notification (don't await to avoid blocking response)
+    notifyNewUserRegistration({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      trialExpiresAt,
+    }).catch((err) => {
+      // Silently fail - notification is not critical
+      console.error("Failed to send Telegram notification:", err)
     })
 
     return NextResponse.json(

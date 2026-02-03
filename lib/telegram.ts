@@ -111,3 +111,90 @@ export async function testTelegramConfig(config: TelegramConfig): Promise<{
     return { success: false, error: error.message }
   }
 }
+
+/**
+ * Get Telegram config from database
+ */
+async function getTelegramConfigFromDb(): Promise<TelegramConfig | null> {
+  try {
+    // Dynamic import to avoid circular dependency
+    const { prisma } = await import("./prisma")
+
+    const setting = await prisma.systemSettings.findUnique({
+      where: { key: "telegram_config" },
+    })
+
+    if (!setting?.value) return null
+
+    const config = setting.value as { botToken?: string; chatId?: string; enabled?: boolean }
+
+    if (!config.enabled || !config.botToken || !config.chatId) {
+      return null
+    }
+
+    return {
+      botToken: config.botToken,
+      chatId: config.chatId,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Send notification about new user registration
+ */
+export async function notifyNewUserRegistration(user: {
+  id: string
+  name: string | null
+  email: string
+  trialExpiresAt: Date
+}): Promise<void> {
+  const config = await getTelegramConfigFromDb()
+  if (!config) return
+
+  const trialDays = Math.ceil(
+    (user.trialExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  )
+
+  const message = `👤 <b>New User Registration</b>
+
+<b>Name:</b> ${user.name || "Not provided"}
+<b>Email:</b> ${user.email}
+<b>User ID:</b> <code>${user.id}</code>
+
+🎁 <b>Trial:</b> ${trialDays} days (expires ${user.trialExpiresAt.toLocaleDateString()})
+
+<i>User has been granted automatic trial access.</i>`
+
+  await sendTelegramMessage(config, {
+    text: message,
+    parseMode: "HTML",
+  })
+}
+
+/**
+ * Send notification when user's trial has expired
+ */
+export async function notifyTrialExpired(user: {
+  id: string
+  name: string | null
+  email: string
+}): Promise<void> {
+  const config = await getTelegramConfigFromDb()
+  if (!config) return
+
+  const message = `⏰ <b>Trial Expired</b>
+
+<b>Name:</b> ${user.name || "Not provided"}
+<b>Email:</b> ${user.email}
+<b>User ID:</b> <code>${user.id}</code>
+
+<i>User tried to access premium features after trial expiry.</i>
+<i>Consider extending their access if they're interested.</i>`
+
+  await sendTelegramMessage(config, {
+    text: message,
+    parseMode: "HTML",
+  })
+}
