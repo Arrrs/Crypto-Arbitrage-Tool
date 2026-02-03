@@ -20,12 +20,3 @@ Real-time cryptocurrency arbitrage scanner that monitors price differences acros
 | ![Screenshot](images/scr4.png) | ![Screenshot](images/scr5.png) | ![Screenshot](images/scr6.png) |
 | ![Screenshot](images/scr7.png) | ![Screenshot](images/scr8.png) | ![Screenshot](images/scr9.png) |
 
-## Demo Accounts
-
-Test paid user:
-user@example.com
-user123
-
-Test unpaid user:
-unpaid@example.com
-user123

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 // Types for spot arbitrage
 export interface SpotDiff {
@@ -81,6 +82,106 @@ export interface FuturesDiffsParams {
   opposite?: boolean
 }
 
+// Whitelist of valid exchanges to prevent injection
+const VALID_EXCHANGES = [
+  "Binance",
+  "Bybit",
+  "OKX",
+  "Gate.io",
+  "Bitget",
+  "MEXC",
+  "KuCoin",
+  "Huobi",
+  "Kraken",
+  "Coinbase",
+  "WhiteBIT",
+  "BingX",
+  "Phemex",
+  "dYdX",
+  "Vertex",
+  "Hyperliquid",
+] as const
+
+// Whitelist of valid time intervals
+const VALID_INTERVALS = [
+  "1 second",
+  "5 seconds",
+  "10 seconds",
+  "30 seconds",
+  "1 minute",
+  "2 minutes",
+  "5 minutes",
+  "10 minutes",
+  "15 minutes",
+  "30 minutes",
+  "1 hour",
+  "2 hours",
+  "4 hours",
+  "8 hours",
+  "12 hours",
+  "24 hours",
+  "1 day",
+  "2 days",
+  "7 days",
+] as const
+
+/**
+ * Validate and sanitize exchange names against whitelist
+ */
+function validateExchanges(exchanges: string[]): string[] {
+  return exchanges.filter((e) => VALID_EXCHANGES.includes(e as any))
+}
+
+/**
+ * Validate interval string against whitelist
+ */
+function validateInterval(interval: string): string | null {
+  const normalized = interval.toLowerCase().trim()
+  const valid = VALID_INTERVALS.find((v) => v.toLowerCase() === normalized)
+  return valid || null
+}
+
+/**
+ * Validate and sanitize symbol (alphanumeric, /, -, _ only)
+ */
+function validateSymbol(symbol: string): string | null {
+  // Symbol should only contain alphanumeric chars, /, -, _
+  const sanitized = symbol.replace(/[^a-zA-Z0-9/_-]/g, "")
+  if (sanitized.length > 0 && sanitized.length <= 20) {
+    return sanitized
+  }
+  return null
+}
+
+/**
+ * Validate and sanitize coin/asset name (alphanumeric only)
+ */
+function validateCoin(coin: string): string | null {
+  const sanitized = coin.replace(/[^a-zA-Z0-9]/g, "")
+  if (sanitized.length > 0 && sanitized.length <= 10) {
+    return sanitized
+  }
+  return null
+}
+
+/**
+ * Validate numeric value and clamp to safe range
+ */
+function validateNumber(value: string, min: number, max: number): number | null {
+  const num = parseFloat(value)
+  if (isNaN(num)) return null
+  return Math.max(min, Math.min(max, num))
+}
+
+/**
+ * Validate limit value
+ */
+function validateLimit(value: string): number {
+  const num = parseInt(value, 10)
+  if (isNaN(num) || num < 1) return 500
+  return Math.min(num, 10000) // Max 10000 rows
+}
+
 /**
  * Get unique exchanges and symbols for spot pairs filter dropdowns
  */
@@ -121,167 +222,220 @@ export async function getFuturesPairsFilterData(): Promise<PairsFilterData> {
 }
 
 /**
- * Parse interval string like "1 minute", "2 hours" to PostgreSQL interval
- */
-function parseInterval(value: string): string {
-  // Already in valid format like "1 minute", "2 hours", etc.
-  return value
-}
-
-/**
- * Get spot diffs with filtering
+ * Get spot diffs with filtering - using parameterized queries for security
  */
 export async function getSpotDiffs(params: SpotDiffsParams): Promise<SpotDiff[]> {
   const { topRows, exchanges, minDiffPerc, maxDiffPerc, symbols, minLifeTime, maxLifeTime } = params
 
-  // Build dynamic query with parameterized values for security
-  // Column names are lowercase in PostgreSQL (no quotes needed)
-  let whereConditions: string[] = ["1=1"]
+  // Build conditions array for Prisma.sql
+  const conditions: Prisma.Sql[] = []
 
-  // Filter by exchanges
+  // Filter by exchanges (validated against whitelist)
   if (exchanges && exchanges.length > 0 && exchanges[0] !== "") {
-    const exchangeList = exchanges.map((e) => `'${e.replace(/'/g, "''")}'`).join(",")
-    whereConditions.push(`firstpairexchange IN (${exchangeList})`)
-    whereConditions.push(`secondpairexchange IN (${exchangeList})`)
+    const validExchanges = validateExchanges(exchanges)
+    if (validExchanges.length > 0) {
+      conditions.push(
+        Prisma.sql`firstpairexchange = ANY(${validExchanges})`
+      )
+      conditions.push(
+        Prisma.sql`secondpairexchange = ANY(${validExchanges})`
+      )
+    }
   }
 
-  // Filter by difference percentage
+  // Filter by difference percentage (validated numbers)
   if (minDiffPerc && minDiffPerc !== "0" && minDiffPerc !== "undefined") {
-    const minVal = parseFloat(minDiffPerc)
-    if (!isNaN(minVal)) {
-      whereConditions.push(`differencepercentage >= ${minVal}`)
+    const minVal = validateNumber(minDiffPerc, 0, 100000)
+    if (minVal !== null) {
+      conditions.push(Prisma.sql`differencepercentage >= ${minVal}`)
     }
   }
   if (maxDiffPerc && maxDiffPerc !== "0" && maxDiffPerc !== "undefined") {
-    const maxVal = parseFloat(maxDiffPerc)
-    if (!isNaN(maxVal)) {
-      whereConditions.push(`differencepercentage <= ${maxVal}`)
+    const maxVal = validateNumber(maxDiffPerc, 0, 100000)
+    if (maxVal !== null) {
+      conditions.push(Prisma.sql`differencepercentage <= ${maxVal}`)
     }
   }
 
-  // Filter by symbols
+  // Filter by symbols (validated and sanitized)
   if (symbols && symbols.length > 0 && symbols[0] !== "") {
-    const symbolList = symbols.map((s) => `'${s.replace(/'/g, "''")}'`).join(",")
-    whereConditions.push(`symbol IN (${symbolList})`)
+    const validSymbols = symbols.map(validateSymbol).filter((s): s is string => s !== null)
+    if (validSymbols.length > 0) {
+      conditions.push(Prisma.sql`symbol = ANY(${validSymbols})`)
+    }
   }
 
-  // Filter by life time
+  // Filter by life time (validated against whitelist)
   if (minLifeTime && minLifeTime !== "undefined") {
-    whereConditions.push(`timeelapsed >= INTERVAL '${parseInterval(minLifeTime)}'`)
+    const validInterval = validateInterval(minLifeTime)
+    if (validInterval) {
+      conditions.push(Prisma.sql`timeelapsed >= ${validInterval}::interval`)
+    }
   }
   if (maxLifeTime && maxLifeTime !== "undefined") {
-    whereConditions.push(`timeelapsed <= INTERVAL '${parseInterval(maxLifeTime)}'`)
+    const validInterval = validateInterval(maxLifeTime)
+    if (validInterval) {
+      conditions.push(Prisma.sql`timeelapsed <= ${validInterval}::interval`)
+    }
   }
 
   // Exclude zero volume and extreme differences
-  whereConditions.push(`firstpairvolume <> 0`)
-  whereConditions.push(`secondpairvolume <> 0`)
-  whereConditions.push(`differencepercentage < 100000`)
+  conditions.push(Prisma.sql`firstpairvolume <> 0`)
+  conditions.push(Prisma.sql`secondpairvolume <> 0`)
+  conditions.push(Prisma.sql`differencepercentage < 100000`)
 
-  const whereClause = whereConditions.join(" AND ")
+  // Combine conditions with AND
+  const whereClause =
+    conditions.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.sql``
 
-  // Determine limit
-  let limitClause = "LIMIT 500"
+  // Determine limit (validated)
+  let limitValue = 500
   if (topRows && topRows.toLowerCase() !== "all" && topRows !== "undefined") {
-    const limit = parseInt(topRows)
-    if (!isNaN(limit)) {
-      limitClause = `LIMIT ${limit}`
-    }
-  } else if (topRows?.toLowerCase() === "all") {
-    limitClause = ""
+    limitValue = validateLimit(topRows)
   }
+  const useLimit = topRows?.toLowerCase() !== "all"
 
-  const query = `
-    SELECT
-      id, pairkey, symbol, baseasset, quoteasset,
-      firstpairexchange, firstpairmarket, firstpairprice, firstpairvolume,
-      secondpairexchange, secondpairmarket, secondpairprice, secondpairvolume,
-      difference, differencepercentage,
-      firstexchangenetworks, secondexchangenetworks,
-      timeoflife,
-      timeelapsed::text as timeelapsed,
-      updatedat, createdat
-    FROM diffs
-    WHERE ${whereClause}
-    ORDER BY differencepercentage DESC
-    ${limitClause}
-  `
+  // Build and execute the query with parameterized values
+  const query = useLimit
+    ? Prisma.sql`
+        SELECT
+          id, pairkey, symbol, baseasset, quoteasset,
+          firstpairexchange, firstpairmarket, firstpairprice, firstpairvolume,
+          secondpairexchange, secondpairmarket, secondpairprice, secondpairvolume,
+          difference, differencepercentage,
+          firstexchangenetworks, secondexchangenetworks,
+          timeoflife,
+          timeelapsed::text as timeelapsed,
+          updatedat, createdat
+        FROM diffs
+        ${whereClause}
+        ORDER BY differencepercentage DESC
+        LIMIT ${limitValue}
+      `
+    : Prisma.sql`
+        SELECT
+          id, pairkey, symbol, baseasset, quoteasset,
+          firstpairexchange, firstpairmarket, firstpairprice, firstpairvolume,
+          secondpairexchange, secondpairmarket, secondpairprice, secondpairvolume,
+          difference, differencepercentage,
+          firstexchangenetworks, secondexchangenetworks,
+          timeoflife,
+          timeelapsed::text as timeelapsed,
+          updatedat, createdat
+        FROM diffs
+        ${whereClause}
+        ORDER BY differencepercentage DESC
+      `
 
-  const results = await prisma.$queryRawUnsafe<SpotDiff[]>(query)
+  const results = await prisma.$queryRaw<SpotDiff[]>(query)
   return results
 }
 
 /**
- * Get futures diffs with filtering
+ * Get futures diffs with filtering - using parameterized queries for security
  */
 export async function getFuturesDiffs(params: FuturesDiffsParams): Promise<FuturesDiff[]> {
   const { topRows, exchanges, symbols, coins, opposite } = params
 
-  let whereConditions: string[] = ["1=1"]
+  // Build conditions array for Prisma.sql
+  const conditions: Prisma.Sql[] = []
 
-  // Filter by exchanges
+  // Filter by exchanges (validated against whitelist)
   if (exchanges && exchanges.length > 0 && exchanges[0] !== "") {
-    const exchangeList = exchanges.map((e) => `'${e.replace(/'/g, "''")}'`).join(",")
-    whereConditions.push(`firstpairexchange IN (${exchangeList})`)
-    whereConditions.push(`secondpairexchange IN (${exchangeList})`)
+    const validExchanges = validateExchanges(exchanges)
+    if (validExchanges.length > 0) {
+      conditions.push(
+        Prisma.sql`firstpairexchange = ANY(${validExchanges})`
+      )
+      conditions.push(
+        Prisma.sql`secondpairexchange = ANY(${validExchanges})`
+      )
+    }
   }
 
-  // Filter by symbols
+  // Filter by symbols (validated and sanitized)
   if (symbols && symbols.length > 0 && symbols[0] !== "") {
-    const symbolList = symbols.map((s) => `'${s.replace(/'/g, "''")}'`).join(",")
-    whereConditions.push(`symbol IN (${symbolList})`)
+    const validSymbols = symbols.map(validateSymbol).filter((s): s is string => s !== null)
+    if (validSymbols.length > 0) {
+      conditions.push(Prisma.sql`symbol = ANY(${validSymbols})`)
+    }
   }
 
   // Filter by opposite funding rate
   if (opposite) {
-    whereConditions.push(`isfundingrateopposite = true`)
+    conditions.push(Prisma.sql`isfundingrateopposite = true`)
   }
 
-  // Filter by coins (base or quote asset)
+  // Filter by coins (validated and sanitized)
   if (coins && coins.length > 0 && coins[0] !== "") {
-    const coinConditions = coins.map(
-      (c) => `(baseasset = '${c.replace(/'/g, "''")}' OR quoteasset = '${c.replace(/'/g, "''")}')`
-    )
-    whereConditions.push(`(${coinConditions.join(" OR ")})`)
+    const validCoins = coins.map(validateCoin).filter((c): c is string => c !== null)
+    if (validCoins.length > 0) {
+      // Use OR condition for base or quote asset matching any of the coins
+      const coinConditions = validCoins.map(
+        (coin) => Prisma.sql`(baseasset = ${coin} OR quoteasset = ${coin})`
+      )
+      conditions.push(Prisma.sql`(${Prisma.join(coinConditions, " OR ")})`)
+    }
   }
 
   // Exclude zero volume
-  whereConditions.push(`firstpairvolume <> 0`)
-  whereConditions.push(`secondpairvolume <> 0`)
+  conditions.push(Prisma.sql`firstpairvolume <> 0`)
+  conditions.push(Prisma.sql`secondpairvolume <> 0`)
 
-  const whereClause = whereConditions.join(" AND ")
+  // Combine conditions with AND
+  const whereClause =
+    conditions.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.sql``
 
-  // Determine limit
-  let limitClause = "LIMIT 500"
+  // Determine limit (validated)
+  let limitValue = 500
   if (topRows && topRows.toLowerCase() !== "all" && topRows !== "undefined") {
-    const limit = parseInt(topRows)
-    if (!isNaN(limit)) {
-      limitClause = `LIMIT ${limit}`
-    }
-  } else if (topRows?.toLowerCase() === "all") {
-    limitClause = ""
+    limitValue = validateLimit(topRows)
   }
+  const useLimit = topRows?.toLowerCase() !== "all"
 
-  const query = `
-    SELECT
-      id, pairkey, symbol, baseasset, quoteasset,
-      firstpairexchange, firstpairmarket, firstpairmarkprice, firstpairindexprice,
-      firstpairvolume, firstpairfundingrate,
-      secondpairexchange, secondpairmarket, secondpairmarkprice, secondpairindexprice,
-      secondpairvolume, secondpairfundingrate,
-      differencemark, differenceindex, differencemarkpercentage, differenceindexpercentage,
-      differencefundingratepercent, isfundingrateopposite,
-      firstexchangenetworks, secondexchangenetworks,
-      timeoflife,
-      timeelapsed::text as timeelapsed,
-      updatedat, createdat
-    FROM diffsfutures
-    WHERE ${whereClause}
-    ORDER BY differencefundingratepercent DESC
-    ${limitClause}
-  `
+  // Build and execute the query with parameterized values
+  const query = useLimit
+    ? Prisma.sql`
+        SELECT
+          id, pairkey, symbol, baseasset, quoteasset,
+          firstpairexchange, firstpairmarket, firstpairmarkprice, firstpairindexprice,
+          firstpairvolume, firstpairfundingrate,
+          secondpairexchange, secondpairmarket, secondpairmarkprice, secondpairindexprice,
+          secondpairvolume, secondpairfundingrate,
+          differencemark, differenceindex, differencemarkpercentage, differenceindexpercentage,
+          differencefundingratepercent, isfundingrateopposite,
+          firstexchangenetworks, secondexchangenetworks,
+          timeoflife,
+          timeelapsed::text as timeelapsed,
+          updatedat, createdat
+        FROM diffsfutures
+        ${whereClause}
+        ORDER BY differencefundingratepercent DESC
+        LIMIT ${limitValue}
+      `
+    : Prisma.sql`
+        SELECT
+          id, pairkey, symbol, baseasset, quoteasset,
+          firstpairexchange, firstpairmarket, firstpairmarkprice, firstpairindexprice,
+          firstpairvolume, firstpairfundingrate,
+          secondpairexchange, secondpairmarket, secondpairmarkprice, secondpairindexprice,
+          secondpairvolume, secondpairfundingrate,
+          differencemark, differenceindex, differencemarkpercentage, differenceindexpercentage,
+          differencefundingratepercent, isfundingrateopposite,
+          firstexchangenetworks, secondexchangenetworks,
+          timeoflife,
+          timeelapsed::text as timeelapsed,
+          updatedat, createdat
+        FROM diffsfutures
+        ${whereClause}
+        ORDER BY differencefundingratepercent DESC
+      `
 
-  const results = await prisma.$queryRawUnsafe<FuturesDiff[]>(query)
+  const results = await prisma.$queryRaw<FuturesDiff[]>(query)
   return results
 }
 

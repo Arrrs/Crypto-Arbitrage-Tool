@@ -8,6 +8,72 @@ import sharp from "sharp"
 import { logger, getRequestId } from "@/lib/logger"
 import { validateCsrfToken } from "@/lib/csrf"
 
+// Magic bytes for common image formats
+const IMAGE_SIGNATURES: { [key: string]: number[] } = {
+  jpeg: [0xff, 0xd8, 0xff],
+  png: [0x89, 0x50, 0x4e, 0x47],
+  gif: [0x47, 0x49, 0x46],
+  webp: [0x52, 0x49, 0x46, 0x46], // RIFF header (WebP starts with RIFF....WEBP)
+  bmp: [0x42, 0x4d],
+}
+
+/**
+ * Validate image by checking magic bytes (file signature)
+ * This is more secure than trusting client-provided MIME type
+ */
+function isValidImageByMagicBytes(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false
+
+  // Check JPEG
+  if (
+    buffer[0] === IMAGE_SIGNATURES.jpeg[0] &&
+    buffer[1] === IMAGE_SIGNATURES.jpeg[1] &&
+    buffer[2] === IMAGE_SIGNATURES.jpeg[2]
+  ) {
+    return true
+  }
+
+  // Check PNG
+  if (
+    buffer[0] === IMAGE_SIGNATURES.png[0] &&
+    buffer[1] === IMAGE_SIGNATURES.png[1] &&
+    buffer[2] === IMAGE_SIGNATURES.png[2] &&
+    buffer[3] === IMAGE_SIGNATURES.png[3]
+  ) {
+    return true
+  }
+
+  // Check GIF
+  if (
+    buffer[0] === IMAGE_SIGNATURES.gif[0] &&
+    buffer[1] === IMAGE_SIGNATURES.gif[1] &&
+    buffer[2] === IMAGE_SIGNATURES.gif[2]
+  ) {
+    return true
+  }
+
+  // Check WebP (RIFF....WEBP)
+  if (
+    buffer[0] === IMAGE_SIGNATURES.webp[0] &&
+    buffer[1] === IMAGE_SIGNATURES.webp[1] &&
+    buffer[2] === IMAGE_SIGNATURES.webp[2] &&
+    buffer[3] === IMAGE_SIGNATURES.webp[3] &&
+    buffer[8] === 0x57 && // W
+    buffer[9] === 0x45 && // E
+    buffer[10] === 0x42 && // B
+    buffer[11] === 0x50 // P
+  ) {
+    return true
+  }
+
+  // Check BMP
+  if (buffer[0] === IMAGE_SIGNATURES.bmp[0] && buffer[1] === IMAGE_SIGNATURES.bmp[1]) {
+    return true
+  }
+
+  return false
+}
+
 export async function POST(request: NextRequest) {
   // Validate CSRF token first
   const csrfError = await validateCsrfToken(request)
@@ -28,14 +94,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 })
     }
 
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      return NextResponse.json({ error: "Invalid file type. Please upload an image." }, { status: 400 })
-    }
-
-    // Validate file size (5MB max)
+    // Validate file size first (5MB max) - check before reading into memory
     if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json({ error: "File too large. Maximum size is 5MB." }, { status: 400 })
+    }
+
+    // Convert to buffer for magic bytes validation
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    // Validate by magic bytes (more secure than MIME type)
+    if (!isValidImageByMagicBytes(buffer)) {
+      return NextResponse.json(
+        { error: "Invalid file type. Please upload a valid image (JPEG, PNG, GIF, WebP, or BMP)." },
+        { status: 400 }
+      )
     }
 
     // Create uploads directory if it doesn't exist
@@ -62,11 +135,8 @@ export async function POST(request: NextRequest) {
     const filename = `${session.user.id}-${timestamp}.webp`
     const filepath = join(uploadsDir, filename)
 
-    // Convert file to buffer and optimize with sharp
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-
     // Optimize image: resize to 400x400, convert to WebP, and compress
+    // This also strips any potentially malicious metadata/payloads
     const optimizedBuffer = await sharp(buffer)
       .resize(400, 400, {
         fit: 'cover',

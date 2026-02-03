@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getSpotDiffs, checkSubscription, SpotDiffsParams } from "@/lib/arbitrage"
 import { logger, getRequestId } from "@/lib/logger"
+import { z } from "zod"
+
+// Zod schema for input validation
+const spotDiffsSchema = z.object({
+  topRows: z.string().regex(/^\d+$|^all$/i).optional(),
+  exchanges: z.array(z.string().max(50)).max(20).optional(),
+  minDiffPerc: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+  maxDiffPerc: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+  symbols: z.array(z.string().max(20)).max(100).optional(),
+  minLifeTime: z.string().max(20).optional(),
+  maxLifeTime: z.string().max(20).optional(),
+})
 
 /**
  * GET /api/arbitrage/diffs
@@ -29,20 +41,37 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams
-    const params: SpotDiffsParams = {
+    let exchanges = searchParams.getAll("exchanges").filter(Boolean)
+    let symbols = searchParams.getAll("symbol").filter(Boolean)
+
+    // Handle comma-separated values
+    if (exchanges.length === 1 && exchanges[0].includes(",")) {
+      exchanges = exchanges[0].split(",").filter(Boolean)
+    }
+    if (symbols.length === 1 && symbols[0].includes(",")) {
+      symbols = symbols[0].split(",").filter(Boolean)
+    }
+
+    // Validate input with Zod
+    const rawParams = {
       topRows: searchParams.get("topRows") || undefined,
-      exchanges: searchParams.getAll("exchanges").filter(Boolean),
+      exchanges: exchanges.length > 0 ? exchanges : undefined,
       minDiffPerc: searchParams.get("minDiffPerc") || undefined,
       maxDiffPerc: searchParams.get("maxDiffPerc") || undefined,
-      symbols: searchParams.getAll("symbol").filter(Boolean),
+      symbols: symbols.length > 0 ? symbols : undefined,
       minLifeTime: searchParams.get("minLifeTime") || undefined,
       maxLifeTime: searchParams.get("maxLifeTime") || undefined,
     }
 
-    // Handle comma-separated exchanges (from query string like ?exchanges=Binance,Bybit)
-    if (params.exchanges?.length === 1 && params.exchanges[0].includes(",")) {
-      params.exchanges = params.exchanges[0].split(",").filter(Boolean)
+    const validation = spotDiffsSchema.safeParse(rawParams)
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Invalid parameters", details: validation.error.flatten() },
+        { status: 400 }
+      )
     }
+
+    const params: SpotDiffsParams = validation.data
 
     const data = await getSpotDiffs(params)
     return NextResponse.json(data)

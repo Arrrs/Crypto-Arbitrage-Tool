@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getFuturesDiffs, checkSubscription, FuturesDiffsParams } from "@/lib/arbitrage"
 import { logger, getRequestId } from "@/lib/logger"
+import { z } from "zod"
+
+// Zod schema for input validation
+const futuresDiffsSchema = z.object({
+  topRows: z.string().regex(/^\d+$|^all$/i).optional(),
+  exchanges: z.array(z.string().max(50)).max(20).optional(),
+  symbols: z.array(z.string().max(20)).max(100).optional(),
+  coins: z.array(z.string().max(10)).max(50).optional(),
+  opposite: z.boolean().optional(),
+})
 
 /**
  * GET /api/arbitrage/diffs-futures
@@ -29,21 +39,39 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams
-    const params: FuturesDiffsParams = {
-      topRows: searchParams.get("topRows") || undefined,
-      exchanges: searchParams.getAll("exchanges").filter(Boolean),
-      symbols: searchParams.getAll("symbol").filter(Boolean),
-      coins: searchParams.getAll("coins").filter(Boolean),
-      opposite: searchParams.get("opposite") === "true",
-    }
+    let exchanges = searchParams.getAll("exchanges").filter(Boolean)
+    let symbols = searchParams.getAll("symbol").filter(Boolean)
+    let coins = searchParams.getAll("coins").filter(Boolean)
 
     // Handle comma-separated values
-    if (params.exchanges?.length === 1 && params.exchanges[0].includes(",")) {
-      params.exchanges = params.exchanges[0].split(",").filter(Boolean)
+    if (exchanges.length === 1 && exchanges[0].includes(",")) {
+      exchanges = exchanges[0].split(",").filter(Boolean)
     }
-    if (params.coins?.length === 1 && params.coins[0].includes(",")) {
-      params.coins = params.coins[0].split(",").filter(Boolean)
+    if (symbols.length === 1 && symbols[0].includes(",")) {
+      symbols = symbols[0].split(",").filter(Boolean)
     }
+    if (coins.length === 1 && coins[0].includes(",")) {
+      coins = coins[0].split(",").filter(Boolean)
+    }
+
+    // Validate input with Zod
+    const rawParams = {
+      topRows: searchParams.get("topRows") || undefined,
+      exchanges: exchanges.length > 0 ? exchanges : undefined,
+      symbols: symbols.length > 0 ? symbols : undefined,
+      coins: coins.length > 0 ? coins : undefined,
+      opposite: searchParams.get("opposite") === "true" ? true : undefined,
+    }
+
+    const validation = futuresDiffsSchema.safeParse(rawParams)
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Invalid parameters", details: validation.error.flatten() },
+        { status: 400 }
+      )
+    }
+
+    const params: FuturesDiffsParams = validation.data
 
     const data = await getFuturesDiffs(params)
     return NextResponse.json(data)
