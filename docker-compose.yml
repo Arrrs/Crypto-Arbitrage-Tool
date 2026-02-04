@@ -1,0 +1,49 @@
+version: '3.8'
+
+# All secrets are loaded from .env.production file (not committed to git)
+# Copy .env.production.example to .env.production and fill in values
+
+services:
+  arbtool:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arbtool
+    restart: unless-stopped
+    ports:
+      - "3050:3050"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - SESSION_MAX_AGE_DAYS=30
+    networks:
+      - arbtool-network
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3050/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    env_file:
+      - .env.production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - arbtool-network
+
+networks:
+  arbtool-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
