@@ -19,8 +19,12 @@ services:
       - SESSION_MAX_AGE_DAYS=30
     networks:
       - arbtool-network
-    depends_on:
-      - postgres
+    # Security hardening - prevents malware from being written
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3050/api/health"]
       interval: 30s
@@ -28,22 +32,6 @@ services:
       retries: 3
       start_period: 40s
 
-  postgres:
-    image: postgres:15
-    container_name: postgres
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:5432:5432"
-    env_file:
-      - .env.production
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - arbtool-network
-
 networks:
   arbtool-network:
-    driver: bridge
-
-volumes:
-  postgres_data:
+    external: true
