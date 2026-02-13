@@ -63,3 +63,5 @@ docs
 /tempFrontend
 # additionalTables.sql
 .env.md
+
+RESTART_NOTES.md

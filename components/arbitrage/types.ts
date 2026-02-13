@@ -1,5 +1,4 @@
 export interface SpotDiffData {
-  id: number
   pairkey: string
   symbol: string
   baseasset: string
@@ -23,7 +22,6 @@ export interface SpotDiffData {
 }
 
 export interface FuturesDiffData {
-  id: number
   pairkey: string
   symbol: string
   baseasset: string

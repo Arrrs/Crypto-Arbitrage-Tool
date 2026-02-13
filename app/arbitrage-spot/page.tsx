@@ -299,7 +299,7 @@ export default function ArbitrageSpotPage() {
   // Mobile card renderer
   const renderMobileCard = (record: SpotDiffData) => (
     <Card
-      key={record.id}
+      key={record.pairkey}
       size="small"
       style={{ marginBottom: 8 }}
       bodyStyle={{ padding: 12 }}
@@ -903,7 +903,7 @@ export default function ArbitrageSpotPage() {
           <Table
             dataSource={diffData}
             columns={columns}
-            rowKey="id"
+            rowKey="pairkey"
             size="small"
             scroll={{ x: 1100 }}
             pagination={{

@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client"
 
 // Types for spot arbitrage
 export interface SpotDiff {
-  id: number
   pairkey: string
   symbol: string
   baseasset: string
@@ -27,7 +26,6 @@ export interface SpotDiff {
 }
 
 export interface FuturesDiff {
-  id: number
   pairkey: string
   symbol: string
   baseasset: string
@@ -301,7 +299,7 @@ export async function getSpotDiffs(params: SpotDiffsParams): Promise<SpotDiff[]>
   const query = useLimit
     ? Prisma.sql`
         SELECT
-          id, pairkey, symbol, baseasset, quoteasset,
+          pairkey, symbol, baseasset, quoteasset,
           firstpairexchange, firstpairmarket, firstpairprice, firstpairvolume,
           secondpairexchange, secondpairmarket, secondpairprice, secondpairvolume,
           difference, differencepercentage,
@@ -316,7 +314,7 @@ export async function getSpotDiffs(params: SpotDiffsParams): Promise<SpotDiff[]>
       `
     : Prisma.sql`
         SELECT
-          id, pairkey, symbol, baseasset, quoteasset,
+          pairkey, symbol, baseasset, quoteasset,
           firstpairexchange, firstpairmarket, firstpairprice, firstpairvolume,
           secondpairexchange, secondpairmarket, secondpairprice, secondpairvolume,
           difference, differencepercentage,
@@ -401,7 +399,7 @@ export async function getFuturesDiffs(params: FuturesDiffsParams): Promise<Futur
   const query = useLimit
     ? Prisma.sql`
         SELECT
-          id, pairkey, symbol, baseasset, quoteasset,
+          pairkey, symbol, baseasset, quoteasset,
           firstpairexchange, firstpairmarket, firstpairmarkprice, firstpairindexprice,
           firstpairvolume, firstpairfundingrate,
           secondpairexchange, secondpairmarket, secondpairmarkprice, secondpairindexprice,
@@ -419,7 +417,7 @@ export async function getFuturesDiffs(params: FuturesDiffsParams): Promise<Futur
       `
     : Prisma.sql`
         SELECT
-          id, pairkey, symbol, baseasset, quoteasset,
+          pairkey, symbol, baseasset, quoteasset,
           firstpairexchange, firstpairmarket, firstpairmarkprice, firstpairindexprice,
           firstpairvolume, firstpairfundingrate,
           secondpairexchange, secondpairmarket, secondpairmarkprice, secondpairindexprice,
